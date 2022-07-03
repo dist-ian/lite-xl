@@ -1,0 +1,8 @@
+CC="${CC:-gcc}"
+CXX="${CXX:-g++}"
+CFLAGS=
+CXXFLAGS=
+LDFLAGS=
+BUILD_TYPE=Release
+
+packages=(freetype2 pcre2 sdl2)

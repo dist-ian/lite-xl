@@ -18,6 +18,7 @@
 
 
 SDL_Window *window;
+pthread_t pty_thread;
 
 static double get_scale(void) {
 #ifndef __APPLE__
