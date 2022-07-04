@@ -112,9 +112,8 @@ int start_pty() {
 #define LOG_ERR(S) (err = errno, perror(S), err)
 
     int master;
-    pid_t pid;
 
-    int err = openpty(&master, NULL, NULL, NULL);
+    pid_t pid = forkpty(&master, NULL, NULL, NULL);
     if(pid == -1)
         return LOG_ERR("forkpty(): ");
 
