@@ -9,6 +9,8 @@
 
 #include "dirmonitor.h"
 
+extern Uint32 user_event_no;
+
 static void send_sdl_event(dmon_watch_id watch_id, dmon_action action, const char *filepath) {
   SDL_Event ev;
   const int size = strlen(filepath) + 1;
@@ -25,7 +27,8 @@ static void send_sdl_event(dmon_watch_id watch_id, dmon_action action, const cha
   }
 #endif
   SDL_zero(ev);
-  ev.type = SDL_USEREVENT;
+  /* dmon uses the first user event number */
+  ev.type = user_event_no;
   ev.user.code = ((watch_id.id & 0xffff) << 16) | (action & 0xffff);
   ev.user.data1 = new_filepath;
   SDL_PushEvent(&ev);
@@ -33,9 +36,6 @@ static void send_sdl_event(dmon_watch_id watch_id, dmon_action action, const cha
 
 void dirmonitor_init() {
   dmon_init();
-  /* In theory we should register our user event but since we
-     have just one type of user event this is not really needed. */
-  /* sdl_dmon_event_type = SDL_RegisterEvents(1); */
 }
 
 void dirmonitor_deinit() {

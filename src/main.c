@@ -19,6 +19,7 @@
 
 SDL_Window *window;
 pthread_t pty_thread;
+Uint32 user_event_no;
 
 static double get_scale(void) {
 #ifndef __APPLE__
@@ -109,6 +110,8 @@ int main(int argc, char **argv) {
 
   SDL_DisplayMode dm;
   SDL_GetCurrentDisplayMode(0, &dm);
+
+  user_event_no = SDL_RegisterEvents(2);
 
   dirmonitor_init();
 

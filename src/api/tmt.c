@@ -8,7 +8,7 @@
 #include <windows.h>
 #endif
 
-#include "tmt.h"
+#include "tmt/tmt.h"
 
 
 #define LUA_T_PUSH_S_I(S, N) (lua_pushinteger(L, N), lua_setfield(L, -2, S))

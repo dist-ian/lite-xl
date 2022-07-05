@@ -3,22 +3,25 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
 
+#include <SDL.h>
+
 #include "tmt/minivt.h"
 
 extern pthread_t pty_thread;
+extern Uint32 user_event_no;
 
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX_PTY_SIZE 999
-#define BUFFER_SIZE (1024 * 1024)
 
 typedef struct {
     pthread_mutex_t read_write_mutex;
-    char buffer[BUFFER_SIZE];
+    pthread_cond_t data_read_cond;
     int buffer_wait_reading;
     int master;
     vt_parser_t *vt;
@@ -46,7 +49,17 @@ void pty_begin_read(pty_poll_context *ctx) {
     pthread_mutex_lock(&ctx->read_write_mutex);
 }
 
-void pty_end_read(pty_poll_context *ctx) {
+void pty_end_read(pty_poll_context *ctx, char *buffer, size_t buffer_size) {
+    size_t rem_buffer_size = buffer_size;
+    char *buffer_ptr = buffer;
+    struct pollfd fd = { .fd = ctx->master, .events = POLLIN };
+    while (rem_buffer_size > 0) {
+        size_t length = read(ctx->master, buffer_ptr, rem_buffer_size);
+        buffer_ptr += length;
+        rem_buffer_size -= length;
+        poll(&fd, 1, 0);
+        if ((fd.revents & POLLIN) == 0) break;
+    }
     ctx->buffer_wait_reading = 0;
     pthread_mutex_unlock(&ctx->read_write_mutex);
 }
@@ -66,26 +79,13 @@ static void *pty_poll_thread_start(void *data) {
 
     while (1) {
         poll(fds, 1, -1);
-        // if (fds[1].revents & POLLIN) {
-        //     pthread_mutex_lock(&thread_data->ctx->read_write_mutex);
-        //     length = read(STDIN_FILENO, buffer, BUFFER_SIZE);
-        //     vtparse(vt, buffer, length);
-        // }
         if (fds[0].revents & POLLIN) {
             pthread_mutex_lock(&ctx->read_write_mutex);
-            size_t rem_buffer_size = BUFFER_SIZE;
-            char *buffer_ptr = ctx->buffer;
-            while (rem_buffer_size > 0) {
-                size_t length = read(ctx->master, buffer_ptr, rem_buffer_size);
-                buffer_ptr += length;
-                rem_buffer_size -= length;
-                poll(fds, 1, 0);
-                if (fds[0].revents & POLLIN == 0) break;
-            }
             SDL_Event ev;
             SDL_zero(ev);
-            ev.type = SDL_USEREVENT;
-            ev.user.code = 0xff; // ((watch_id.id & 0xffff) << 16) | (action & 0xffff);
+            /* Use for tmt input/output the 2nd event number */
+            ev.type = user_event_no + 1;
+            ev.user.code = 0xff;
             // ev.user.data1 = new_filepath;
             SDL_PushEvent(&ev);
             ctx->buffer_wait_reading = 1;
@@ -108,9 +108,8 @@ static void *pty_poll_thread_start(void *data) {
     return NULL;
 }
 
-int start_pty() {
-#define LOG_ERR(S) (err = errno, perror(S), err)
-
+pty_poll_context *start_pty() {
+#define LOG_ERR(S) (perror(S), NULL)
     int master;
 
     pid_t pid = forkpty(&master, NULL, NULL, NULL);
@@ -119,12 +118,20 @@ int start_pty() {
 
     if (pid != 0) {
         // parent
-        int r = pthread_create(&pty_thread, NULL, pty_poll_thread_start, NULL);
-
+        pty_poll_context *ctx = malloc(sizeof(pty_poll_context));
+        if (ctx) {
+            int r = pthread_create(&pty_thread, NULL, pty_poll_thread_start, ctx);
+            if (r != 0) {
+                free(ctx);
+                return LOG_ERR("pthread_create(): ");
+            }
+            return ctx;
+        }
     } else {
         // child
         setenv("TERM", "ansi", 1);
         execl("/bin/bash", "bash", (char *) NULL);
         return LOG_ERR("execl(): ");
     }
+    return NULL;
 }
